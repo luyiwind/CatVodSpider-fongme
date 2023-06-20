@@ -6,6 +6,7 @@ import android.text.TextUtils;
 import com.github.catvod.bean.Class;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Image;
+import com.github.catvod.utils.Utils;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 
@@ -18,18 +19,22 @@ public class Drive {
 
     @SerializedName("drives")
     private List<Drive> drives;
+    @SerializedName("params")
+    private List<Param> params;
+    @SerializedName("login")
+    private Login login;
     @SerializedName("vodPic")
     private String vodPic;
     @SerializedName("name")
     private String name;
     @SerializedName("server")
     private String server;
-    @SerializedName("password")
-    private String password;
     @SerializedName("version")
     private int version;
     @SerializedName("path")
     private String path;
+    @SerializedName("token")
+    private String token;
 
     public static Drive objectFrom(String str) {
         return new Gson().fromJson(str, Drive.class);
@@ -37,6 +42,14 @@ public class Drive {
 
     public List<Drive> getDrives() {
         return drives == null ? new ArrayList<>() : drives;
+    }
+
+    public List<Param> getParams() {
+        return params == null ? new ArrayList<>() : params;
+    }
+
+    public Login getLogin() {
+        return login;
     }
 
     public Drive(String name) {
@@ -55,10 +68,6 @@ public class Drive {
         return TextUtils.isEmpty(server) ? "" : server;
     }
 
-    public String getPassword() {
-        return TextUtils.isEmpty(password) ? "" : password;
-    }
-
     public int getVersion() {
         return version;
     }
@@ -75,6 +84,14 @@ public class Drive {
         this.path = TextUtils.isEmpty(path) ? "" : path;
     }
 
+    public String getToken() {
+        return TextUtils.isEmpty(token) ? "" : token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+
     public boolean isNew() {
         return getVersion() == 3;
     }
@@ -89,6 +106,10 @@ public class Drive {
 
     public String settingsApi() {
         return getHost() + "/api/public/settings";
+    }
+
+    public String loginApi() {
+        return getHost() + "/api/auth/login";
     }
 
     public String listApi() {
@@ -123,6 +144,18 @@ public class Drive {
             params.put("path", "/");
             return new Gson().toJson(params);
         }
+    }
+
+    public HashMap<String, String> getHeader() {
+        HashMap<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", Utils.CHROME);
+        if (!getToken().isEmpty()) headers.put("Authorization", token);
+        return headers;
+    }
+
+    public String findPass(String path) {
+        for (Param param : getParams()) if (path.startsWith(param.getPath())) return param.getPass();
+        return "";
     }
 
     @Override

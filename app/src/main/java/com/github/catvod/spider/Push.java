@@ -1,17 +1,18 @@
 package com.github.catvod.spider;
 
 import android.content.Context;
+import android.net.Uri;
 import android.text.TextUtils;
 
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Sub;
 import com.github.catvod.bean.Vod;
+import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Utils;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -31,6 +32,7 @@ public class Push extends Ali {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
+        if (id.contains("youtube.com")) return Result.get().url(Youtube.fetch(id)).string();
         if (flag.equals("直連")) return Result.get().url(id).subs(getSubs(id)).string();
         if (flag.equals("嗅探")) return Result.get().parse().url(id).string();
         if (flag.equals("解析")) return Result.get().parse().jx().url(id).string();
@@ -49,14 +51,32 @@ public class Push extends Ali {
     }
 
     private List<Sub> getSubs(String url) {
-        if (!url.startsWith("file://")) return Collections.emptyList();
-        File file = new File(url.replace("file://", ""));
-        if (file.getParentFile() == null) return Collections.emptyList();
         List<Sub> subs = new ArrayList<>();
+        if (url.startsWith("file://")) setFileSub(url, subs);
+        if (url.startsWith("http://")) setHttpSub(url, subs);
+        return subs;
+    }
+
+    private void setHttpSub(String url, List<Sub> subs) {
+        List<String> vodTypes = Arrays.asList("mp4", "mkv");
+        List<String> subTypes = Arrays.asList("srt", "ass");
+        if (!vodTypes.contains(Utils.getExt(url))) return;
+        for (String ext : subTypes) detectSub(url, ext, subs);
+    }
+
+    private void detectSub(String url, String ext, List<Sub> subs) {
+        url = Utils.removeExt(url).concat(".").concat(ext);
+        if (OkHttp.string(url).length() > 100) return;
+        String name = Uri.parse(url).getLastPathSegment();
+        subs.add(Sub.create().name(name).ext(ext).url(url));
+    }
+
+    private void setFileSub(String url, List<Sub> subs) {
+        File file = new File(url.replace("file://", ""));
+        if (file.getParentFile() == null) return;
         for (File f : Objects.requireNonNull(file.getParentFile().listFiles())) {
             String ext = Utils.getExt(f.getName());
             if (Utils.isSub(ext)) subs.add(Sub.create().name(Utils.removeExt(f.getName())).ext(ext).url("file://" + f.getAbsolutePath()));
         }
-        return subs;
     }
 }

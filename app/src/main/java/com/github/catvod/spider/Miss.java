@@ -35,7 +35,7 @@ public class Miss extends Spider {
             String typeId = a.attr("href").replace(url, "");
             if (!typeIds.contains(typeId)) continue;
             classes.add(new Class(typeId, typeName));
-            filters.put(typeId, List.of(new Filter("filters", "過濾", Arrays.asList(new Filter.Value("全部", ""), new Filter.Value("單人作品", "individual"), new Filter.Value("中文字幕", "chinese-subtitle")))));
+            filters.put(typeId, Arrays.asList(new Filter("filters", "過濾", Arrays.asList(new Filter.Value("全部", ""), new Filter.Value("單人作品", "individual"), new Filter.Value("中文字幕", "chinese-subtitle")))));
         }
         for (Element div : doc.select("div.thumbnail")) {
             String id = div.select("a.text-secondary").attr("href").replace(url, "");
@@ -43,6 +43,7 @@ public class Miss extends Spider {
             String pic = div.select("img").attr("data-src");
             if (pic.isEmpty()) pic = div.select("img").attr("src");
             String remark = div.select("span").text();
+            if (TextUtils.isEmpty(name)) continue;
             list.add(new Vod(id, name, pic, remark));
         }
         return Result.string(classes, list, filters);
@@ -62,6 +63,7 @@ public class Miss extends Spider {
             String pic = div.select("img").attr("data-src");
             if (pic.isEmpty()) pic = div.select("img").attr("src");
             String remark = div.select("span").text();
+            if (TextUtils.isEmpty(name)) continue;
             list.add(new Vod(id, name, pic, remark));
         }
         return Result.string(list);
@@ -91,6 +93,7 @@ public class Miss extends Spider {
             String pic = div.select("img").attr("data-src");
             if (pic.isEmpty()) pic = div.select("img").attr("src");
             String remark = div.select("span").text();
+            if (TextUtils.isEmpty(name)) continue;
             list.add(new Vod(id, name, pic, remark));
         }
         return Result.string(list);

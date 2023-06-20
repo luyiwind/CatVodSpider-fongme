@@ -12,6 +12,7 @@ import com.github.catvod.bean.alist.Drive;
 import com.github.catvod.bean.alist.Item;
 import com.github.catvod.bean.alist.Sorter;
 import com.github.catvod.crawler.Spider;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Utils;
 
@@ -51,6 +52,17 @@ public class AList extends Spider {
         return drives.get(drives.indexOf(new Drive(name))).check();
     }
 
+    private String post(Drive drive, String url, String param) {
+        return post(drive, url, param, true);
+    }
+
+    private String post(Drive drive, String url, String param, boolean retry) {
+        String response = OkHttp.postJson(url, param, drive.getHeader()).getBody();
+        SpiderDebug.log(response);
+        if (retry && response.contains("Guest user is disabled") && login(drive)) return post(drive, url, param, false);
+        return response;
+    }
+
     @Override
     public void init(Context context, String extend) {
         try {
@@ -75,9 +87,11 @@ public class AList extends Spider {
         fetchRule();
         String type = extend.containsKey("type") ? extend.get("type") : "";
         String order = extend.containsKey("order") ? extend.get("order") : "";
+        String key = tid.contains("/") ? tid.substring(0, tid.indexOf("/")) : tid;
         List<Item> folders = new ArrayList<>();
         List<Item> files = new ArrayList<>();
         List<Vod> list = new ArrayList<>();
+
         for (Item item : getList(tid, true)) {
             if (item.isFolder()) folders.add(item);
             else files.add(item);
@@ -86,6 +100,12 @@ public class AList extends Spider {
             Sorter.sort(type, order, folders);
             Sorter.sort(type, order, files);
         }
+
+        int count = 0;
+        Drive drive = getDrive(key);
+        for (Item item : files) if (item.isMedia(drive.isNew())) count++;
+        if (count > 1) folders.add(0, Item.playList(files.get(0), vodPic));
+
         for (Item item : folders) list.add(item.getVod(tid, vodPic));
         for (Item item : files) list.add(item.getVod(tid, vodPic));
         return Result.get().vod(list).page().string();
@@ -95,24 +115,31 @@ public class AList extends Spider {
     public String detailContent(List<String> ids) throws Exception {
         fetchRule();
         String id = ids.get(0);
+        boolean list = id.endsWith("播放列表");
         String key = id.contains("/") ? id.substring(0, id.indexOf("/")) : id;
         String path = id.substring(0, id.lastIndexOf("/"));
         String name = path.substring(path.lastIndexOf("/") + 1);
         Drive drive = getDrive(key);
         List<Item> parents = getList(path, false);
         Sorter.sort("name", "asc", parents);
-        List<String> playUrls = new ArrayList<>();
-        for (Item item : parents) {
-            if (item.isMedia(drive.isNew())) {
-                playUrls.add(item.getName() + "$" + item.getVodId(path) + findSubs(path, parents));
-            }
-        }
         Vod vod = new Vod();
-        vod.setVodId(id);
-        vod.setVodName(name);
-        vod.setVodPic(vodPic);
         vod.setVodPlayFrom(key);
-        vod.setVodPlayUrl(TextUtils.join("#", playUrls));
+
+        if (list) {
+            vod.setVodId(id);
+            vod.setVodName(name);
+            vod.setVodPic(vodPic);
+            List<String> playUrls = new ArrayList<>();
+            for (Item item : parents) if (item.isMedia(drive.isNew())) playUrls.add(item.getName() + "$" + item.getVodId(path) + findSubs(path, parents));
+            vod.setVodPlayUrl(TextUtils.join("#", playUrls));
+        } else {
+            Item item = getDetail(id);
+            vod.setVodId(item.getVodId(id));
+            vod.setVodName(item.getName());
+            vod.setVodPic(item.getPic(vodPic));
+            vod.setVodPlayUrl(item.getName() + "$" + item.getVodId(path) + findSubs(path, parents));
+        }
+
         return Result.string(vod);
     }
 
@@ -132,15 +159,30 @@ public class AList extends Spider {
         return Result.get().url(getDetail(ids[0]).getUrl()).subs(getSub(ids)).string();
     }
 
+    private boolean login(Drive drive) {
+        try {
+            JSONObject params = new JSONObject();
+            params.put("username", drive.getLogin().getUsername());
+            params.put("password", drive.getLogin().getPassword());
+            String response = OkHttp.postJson(drive.loginApi(), params.toString()).getBody();
+            drive.setToken(new JSONObject(response).getJSONObject("data").getString("token"));
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     private Item getDetail(String id) {
         try {
             String key = id.contains("/") ? id.substring(0, id.indexOf("/")) : id;
             String path = id.contains("/") ? id.substring(id.indexOf("/")) : "";
             Drive drive = getDrive(key);
+            path = path.startsWith(drive.getPath()) ? path : drive.getPath() + path;
             JSONObject params = new JSONObject();
-            params.put("password", drive.getPassword());
-            params.put("path", path.startsWith(drive.getPath()) ? path : drive.getPath() + path);
-            String response = OkHttp.postJson(drive.getApi(), params.toString()).getBody();
+            params.put("path", path);
+            params.put("password", drive.findPass(path));
+            String response = post(drive, drive.getApi(), params.toString());
             return Item.objectFrom(getDetailJson(drive.isNew(), response));
         } catch (Exception e) {
             return new Item();
@@ -152,10 +194,11 @@ public class AList extends Spider {
             String key = id.contains("/") ? id.substring(0, id.indexOf("/")) : id;
             String path = id.contains("/") ? id.substring(id.indexOf("/")) : "";
             Drive drive = getDrive(key);
+            path = path.startsWith(drive.getPath()) ? path : drive.getPath() + path;
             JSONObject params = new JSONObject();
-            params.put("password", drive.getPassword());
-            params.put("path", path.startsWith(drive.getPath()) ? path : drive.getPath() + path);
-            String response = OkHttp.postJson(drive.listApi(), params.toString()).getBody();
+            params.put("path", path);
+            params.put("password", drive.findPass(path));
+            String response = post(drive, drive.listApi(), params.toString());
             List<Item> items = Item.arrayFrom(getListJson(drive.isNew(), response));
             Iterator<Item> iterator = items.iterator();
             if (filter) while (iterator.hasNext()) if (iterator.next().ignore(drive.isNew())) iterator.remove();
@@ -167,7 +210,7 @@ public class AList extends Spider {
 
     private void search(CountDownLatch cd, List<Vod> list, Drive drive, String keyword) {
         try {
-            String response = OkHttp.postJson(drive.searchApi(), drive.params(keyword)).getBody();
+            String response = post(drive, drive.searchApi(), drive.params(keyword));
             List<Item> items = Item.arrayFrom(getSearchJson(drive.isNew(), response));
             for (Item item : items) if (!item.ignore(drive.isNew())) list.add(item.getVod(drive, vodPic));
         } catch (Exception ignored) {

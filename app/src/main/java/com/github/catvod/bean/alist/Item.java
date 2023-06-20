@@ -35,6 +35,14 @@ public class Item {
         return new Gson().fromJson(str, Item.class);
     }
 
+    public static Item playList(Item copy, String vodPic) {
+        Item item = new Item();
+        item.name = "播放列表";
+        item.path = copy.path;
+        item.thumb = vodPic;
+        return item;
+    }
+
     public static List<Item> arrayFrom(String str) {
         Type listType = new TypeToken<List<Item>>() {}.getType();
         return new Gson().fromJson(str, listType);
@@ -94,12 +102,13 @@ public class Item {
     }
 
     public boolean isMedia(boolean isNew) {
+        if (getName().endsWith(".ts") || getName().endsWith(".mpg")) return true;
         if (isNew) return getType() == 2 || getType() == 3;
         return getType() == 3 || getType() == 4;
     }
 
     public boolean ignore(boolean isNew) {
-        if (getName().endsWith(".ts")) return false;
+        if (getName().endsWith(".ts") || getName().endsWith(".mpg")) return false;
         if (isNew) return getType() == 0 || getType() == 4;
         return getType() == 0 || getType() == 2 || getType() == 5;
     }
